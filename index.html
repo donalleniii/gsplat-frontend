@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>G-Splat</title>
+  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js"></script>
+  <script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/util.js"></script>
+  <script type="module" crossorigin src="/assets/index-bsO2NzmK.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-S3N3pu-X.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <canvas id="header-particles" class="header-particles"></canvas>
+      <h1 class="hero-title"><span id="hero-text"></span><span class="hero-cursor">|</span></h1>
+      <p class="subtitle">Mesh to Gaussian Splat Converter</p>
+      <p class="hero-org">Asteria Research & Technology</p>
+    </header>
+
+    <main>
+      <!-- Drop Zone -->
+      <div id="dropzone" class="dropzone">
+        <div class="dropzone-content">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <p>Drop a 3D model here</p>
+          <p class="formats">.obj .fbx .glb .gltf .usdz .ply .stl</p>
+          <input type="file" id="file-input" accept=".obj,.fbx,.glb,.gltf,.usdz,.ply,.stl" hidden />
+          <button id="browse-btn" class="btn-secondary">Browse Files</button>
+        </div>
+      </div>
+
+      <!-- File Info -->
+      <div id="file-info" class="panel hidden">
+        <div class="file-info-row">
+          <span id="file-name" class="file-name"></span>
+          <span id="file-meta" class="file-meta"></span>
+        </div>
+      </div>
+
+      <!-- Viewer Area -->
+      <div id="viewer-area" class="viewer-area hidden">
+
+        <!-- ─── Input Model Panel ─── -->
+        <div class="viewer-panel">
+          <h3>Input Model</h3>
+          <div id="model-viewer" class="viewer-canvas"></div>
+
+          <!-- Convert footer (lives inside input panel) -->
+          <div id="convert-footer" class="convert-footer">
+            <div class="convert-footer-top">
+              <div class="convert-mode-toggle">
+                <button id="mode-fast" class="convert-mode-btn active" data-mode="fast">Fast</button>
+                <button id="mode-quality" class="convert-mode-btn" data-mode="quality">HQ</button>
+              </div>
+
+              <div id="fast-options" class="convert-inline-options">
+                <label>Density</label>
+                <input type="range" id="num-points" min="50000" max="500000" value="200000" step="25000" />
+                <span id="density-val" class="convert-val">200K</span>
+              </div>
+
+              <div id="quality-options" class="convert-inline-options hidden">
+                <label>Views</label>
+                <input type="range" id="num-views" min="16" max="128" value="24" step="4" />
+                <span id="views-val" class="convert-val">24</span>
+              </div>
+            </div>
+
+            <button id="convert-btn" class="btn-convert">Convert</button>
+
+            <!-- Progress (inline, replaces button area when active) -->
+            <div id="progress-area" class="convert-progress hidden">
+              <div class="progress-bar-track">
+                <div id="progress-bar" class="progress-bar-fill"></div>
+              </div>
+              <p id="progress-text" class="progress-text">Starting...</p>
+            </div>
+          </div>
+
+          <!-- HQ expanded options (shown below when HQ mode selected) -->
+          <div id="quality-expanded" class="quality-expanded hidden">
+            <div class="quality-row">
+              <label>Resolution <span id="res-val">1024</span>px</label>
+              <input type="range" id="resolution" min="512" max="2048" value="1024" step="128" />
+            </div>
+            <div class="quality-row">
+              <label>Iterations <span id="iter-val">5000</span></label>
+              <input type="range" id="iterations" min="1000" max="10000" value="5000" step="500" />
+            </div>
+            <div class="quality-row">
+              <label>SH Degree <span id="sh-val">1</span></label>
+              <input type="range" id="sh-degree" min="0" max="3" value="1" step="1" />
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── Output Splat Panel ─── -->
+        <div class="viewer-panel">
+          <div class="output-header">
+            <h3>Output Splat</h3>
+            <div id="output-actions" class="output-actions hidden">
+              <span id="gaussian-count" class="gaussian-badge"></span>
+              <button id="dl-ply" class="btn-download">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <span class="dl-label">Download .ply</span>
+              </button>
+            </div>
+          </div>
+          <div id="splat-viewer" class="viewer-canvas">
+            <div class="placeholder">Convert to see result</div>
+          </div>
+          <!-- Viewer controls -->
+          <div id="splat-controls" class="splat-controls hidden">
+            <!-- Row 1: Sliders -->
+            <div class="splat-row">
+              <div class="splat-ctrl-group">
+                <label>Point Density</label>
+                <input type="range" id="splat-point-size" min="0.5" max="80" value="12" step="0.5" />
+              </div>
+              <div class="splat-ctrl-group">
+                <label>Spin Speed</label>
+                <input type="range" id="splat-spin-speed" min="1" max="50" value="10" step="1" />
+              </div>
+            </div>
+            <!-- Row 2: Action buttons -->
+            <div class="splat-row splat-row-actions">
+              <button id="splat-spin-toggle" class="splat-btn active">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.22-8.56"/><polyline points="21 3 21 9 15 9"/></svg>
+                Spin
+              </button>
+              <button id="splat-dir-toggle" class="splat-btn">CW</button>
+              <button id="splat-gizmo-toggle" class="splat-btn">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4m-10-10h4m12 0h4"/></svg>
+                Align
+              </button>
+              <div style="flex:1"></div>
+              <button id="splat-record-btn" class="splat-btn splat-record-btn">
+                <span class="rec-dot-icon"></span>
+                Record
+              </button>
+              <span id="rec-status" class="rec-status"></span>
+            </div>
+          </div>
+          <!-- Gizmo alignment sub-bar -->
+          <div id="gizmo-bar" class="gizmo-bar hidden">
+            <div class="gizmo-mode-group">
+              <button id="gizmo-mode-rotate" class="splat-btn gizmo-icon-btn active" title="Rotate">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 12a9 9 0 1 1-6.22-8.56"/>
+                  <polyline points="21 3 21 9 15 9"/>
+                </svg>
+              </button>
+              <button id="gizmo-mode-translate" class="splat-btn gizmo-icon-btn" title="Move">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="5 9 2 12 5 15"/>
+                  <polyline points="9 5 12 2 15 5"/>
+                  <polyline points="15 19 12 22 9 19"/>
+                  <polyline points="19 9 22 12 19 15"/>
+                  <line x1="2" y1="12" x2="22" y2="12"/>
+                  <line x1="12" y1="2" x2="12" y2="22"/>
+                </svg>
+              </button>
+            </div>
+            <div class="gizmo-mode-group">
+              <button id="gizmo-undo" class="splat-btn gizmo-icon-btn" title="Undo" disabled style="opacity:0.3">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <polyline points="1 4 1 10 7 10"/>
+                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                </svg>
+              </button>
+              <button id="gizmo-redo" class="splat-btn gizmo-icon-btn" title="Redo" disabled style="opacity:0.3">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <polyline points="23 4 23 10 17 10"/>
+                  <path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/>
+                </svg>
+              </button>
+            </div>
+            <span class="gizmo-hint-rings">
+              <span class="ring-dot" style="background:#ff4444"></span>X
+              <span class="ring-dot" style="background:#44ff44"></span>Y
+              <span class="ring-dot" style="background:#4488ff"></span>Z
+            </span>
+            <button id="splat-autofloor" class="splat-btn">Auto Floor</button>
+            <div style="flex:1"></div>
+            <button id="splat-save-anchor" class="splat-btn save-anchor-btn">Save Anchor</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <div class="footer-left">
+          <span class="footer-copyright">&copy; 2025 Asteria Research & Technology</span>
+        </div>
+        <div class="footer-center">
+          <span class="footer-built">Engineered by <strong>Don Allen Stevenson III</strong></span>
+          <span class="footer-sep">&middot;</span>
+          <a href="https://www.donalleniii.me" class="footer-link" target="_blank">donalleniii.me</a>
+          <span class="footer-sep">&middot;</span>
+          <span class="footer-handle">@donalleniii</span>
+        </div>
+        <div class="footer-right">
+          <span class="footer-ai">Crafted with AI-assisted development</span>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+  // ── Header particle field ──
+  (function() {
+    const canvas = document.getElementById('header-particles');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let w, h, particles = [], animId;
+
+    function resize() {
+      const rect = canvas.parentElement.getBoundingClientRect();
+      w = canvas.width = rect.width + 120;
+      h = canvas.height = rect.height + 80;
+    }
+
+    function init() {
+      resize();
+      particles = [];
+      const count = Math.floor(w * h / 600); // denser field
+      for (let i = 0; i < count; i++) {
+        const isHero = Math.random() < 0.04; // 4% are larger "hero" particles
+        particles.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          z: isHero ? 0.8 + Math.random() * 0.2 : Math.random(),
+          vx: (Math.random() - 0.5) * (isHero ? 0.3 : 0.15),
+          vy: (Math.random() - 0.5) * 0.12 - 0.03,
+          vz: (Math.random() - 0.5) * 0.003,
+          hue: 250 + Math.random() * 40,
+          sat: isHero ? 80 : 50 + Math.random() * 30,
+          birth: performance.now() / 1000 + Math.random() * 2.5,
+          isHero,
+        });
+      }
+    }
+
+    function draw() {
+      animId = requestAnimationFrame(draw);
+      const t = performance.now() / 1000;
+      ctx.clearRect(0, 0, w, h);
+
+      for (const p of particles) {
+        // Gentle 3D-like drift
+        p.x += p.vx + Math.sin(t * 0.4 + p.y * 0.008) * 0.12;
+        p.y += p.vy + Math.cos(t * 0.25 + p.x * 0.005) * 0.04;
+        p.z = Math.max(0, Math.min(1, p.z + p.vz));
+
+        // Wrap
+        if (p.x < -20) p.x = w + 20;
+        if (p.x > w + 20) p.x = -20;
+        if (p.y < -20) p.y = h + 20;
+        if (p.y > h + 20) p.y = -20;
+
+        // Fade in, hold, slow fade
+        const age = t - p.birth;
+        if (age < 0) continue;
+        let alpha;
+        if (age < 1.2) alpha = age / 1.2;
+        else alpha = 1;
+
+        // Gentle breathing
+        alpha *= 0.6 + Math.sin(t * 0.8 + p.x * 0.02) * 0.15;
+
+        const baseSize = p.isHero ? 2.5 + p.z * 2 : 0.8 + p.z * 1.8;
+        const brightness = p.z * 0.5 + 0.15;
+
+        // Outer glow
+        if (p.isHero || p.z > 0.6) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, baseSize * 3, 0, Math.PI * 2);
+          ctx.fillStyle = `hsla(${p.hue}, ${p.sat}%, 65%, ${alpha * brightness * 0.12})`;
+          ctx.fill();
+        }
+
+        // Main dot
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, baseSize, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${p.hue}, ${p.sat}%, 72%, ${alpha * brightness})`;
+        ctx.fill();
+
+        // Bright core for hero particles
+        if (p.isHero) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, baseSize * 0.35, 0, Math.PI * 2);
+          ctx.fillStyle = `hsla(${p.hue}, 90%, 92%, ${alpha * brightness * 1.4})`;
+          ctx.fill();
+        }
+      }
+    }
+
+    init();
+    draw();
+    window.addEventListener('resize', () => { resize(); });
+  })();
+
+  // ── Hero title typing animation ──
+  (function() {
+    const el = document.getElementById('hero-text');
+    if (!el) return;
+
+    // The sequence of names to cycle through
+    const sequence = [
+      { text: 'Gaussian Splat', hold: 2200 },
+      { text: 'Galvajian Splat', hold: 800 },
+      { text: 'Gaussian Splat', hold: 1000 },
+      { text: 'G-Splat', hold: 4000 },
+      { text: 'Gaussian Splat', hold: 1500 },
+      { text: 'G-Splat', hold: 6000 },
+    ];
+
+    const TYPE_SPEED = 55;      // ms per character typing
+    const DELETE_SPEED = 35;    // ms per character deleting
+    const PAUSE_BEFORE_DELETE = 300;
+
+    let current = '';
+    let seqIndex = 0;
+    let charIndex = 0;
+    let isDeleting = false;
+    let timeout = null;
+
+    function tick() {
+      const target = sequence[seqIndex].text;
+
+      if (!isDeleting) {
+        // Typing
+        charIndex++;
+        current = target.substring(0, charIndex);
+        el.textContent = current;
+
+        if (charIndex >= target.length) {
+          // Done typing — hold, then delete
+          timeout = setTimeout(() => {
+            isDeleting = true;
+            tick();
+          }, sequence[seqIndex].hold);
+          return;
+        }
+        timeout = setTimeout(tick, TYPE_SPEED + Math.random() * 30);
+      } else {
+        // Deleting
+        charIndex--;
+        current = target.substring(0, charIndex);
+        el.textContent = current;
+
+        if (charIndex <= 0) {
+          // Done deleting — move to next
+          isDeleting = false;
+          seqIndex = (seqIndex + 1) % sequence.length;
+          charIndex = 0;
+          timeout = setTimeout(tick, PAUSE_BEFORE_DELETE);
+          return;
+        }
+        timeout = setTimeout(tick, DELETE_SPEED + Math.random() * 15);
+      }
+    }
+
+    // Start after the hero fade-in animation
+    setTimeout(tick, 600);
+  })();
+  </script>
+</body>
+</html>
